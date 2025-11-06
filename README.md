@@ -99,7 +99,8 @@ conda create -n rag python=3.10 -y
 conda activate rag
 
 ```
-If you already have an environment set up (e.g. base), you can skip creating a new one — but using a dedicated environment avoids version conflicts.
+If you already have an environment set up (e.g. base), you can skip creating a new one, but using a dedicated environment avoids version conflicts.
+
 
 3. Install dependencies
 
