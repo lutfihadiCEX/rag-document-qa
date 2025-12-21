@@ -1,0 +1,10 @@
+# Ignore the local database
+data/vectorstore/
+
+# Ignore uploaded documents
+data/docs/
+data/documents/
+
+# Ignore Python/Jupyter junk
+__pycache__/
+.ipynb_checkpoints/
