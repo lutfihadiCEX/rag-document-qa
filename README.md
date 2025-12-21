@@ -139,7 +139,7 @@ ollama serve
 
 ```bash
 
-streamlit run ui/streamlit\_app.py
+streamlit run ui/streamlit_app.py
 
 ```
 
