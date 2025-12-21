@@ -199,11 +199,17 @@ This project is for research purposes as part of GenAI exploring and learning. N
 
 ## Future improvements
 
-- Add multi-document context memory
+- Automated Evaluation: Explore RAGAS or DeepEval metrics (Faithfulness, Relevancy) using a dedicated high parameter "Judge" model (e.g., Llama-3-70B) to avoid self evaluation bias.
+
+- Hardware Optimization: Implement GGUF quantization levels to test larger models on limited VRAM.
+
+- Hybrid Search: Integrate BM25 keyword search alongside FAISS semantic search for better handling of technical acronyms.
+
+- Add multi document context memory
   
 - Integrate document summarization using LangChain chains
    
 - Dockerize for easier deployment
    
-- Extend support for other languages documents
+
 
