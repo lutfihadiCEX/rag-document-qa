@@ -85,9 +85,9 @@ Installation
 
 ```bash
 
-git clone https://github.com/lutfihadiCEX/RAG_document_QA.git
+git clone https://github.com/lutfihadiCEX/rag-document-qa.git
 
-cd RAG_document_QA
+cd rag-document-qa
 
 ```
 
