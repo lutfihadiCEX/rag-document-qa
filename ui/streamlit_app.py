@@ -1,234 +1,207 @@
-# Streamlit UI for RAG Document QA System
-
+"""
+RAG Document QA - Streamlit UI with Evaluation
+"""
 
 import streamlit as st
 import sys
 import os
+from pathlib import Path
+from datetime import datetime
+import tempfile
 
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from app.ingestion import DocumentIngestion
 from app.pipeline import RAGPipeline
-import tempfile
+from app.evaluation import SimpleRAGMetrics, RAGEvaluationTracker
 
-# Page configuration
 st.set_page_config(
     page_title="RAG Document QA",
-    page_icon="🧠🛢",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_icon="📚",
+    layout="wide"
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-    }
-    .source-box {
-        background-color: #f0f2f6;
-        padding: 10px;
-        border-radius: 5px;
-        margin: 5px 0;
-    }
-</style>
-""", unsafe_allow_html=True)
+st.title("📚 RAG Document Q&A System")
+st.markdown("*Upload documents and ask questions - with evaluation!*")
 
-# Title
-st.markdown('<p class="main-header">🧠🛢 RAG Document Q&A System</p>', unsafe_allow_html=True)
-st.markdown("*Upload documents and ask questions - Powered by local LLMs (100% FREE!)*")
-
-# Sidebar
 with st.sidebar:
     st.header("⚙️ Configuration")
-    
-    # Model selection
-    model = st.selectbox(
-        "Select LLM Model",
-        ["llama3.2", "mistral", "phi3"],
-        help="Choose which Ollama model to use"
-    )
-    
-    st.info(f"Using: **{model}**")
-    
-    st.divider()
-    
-    # Upload section
+    model = st.selectbox("Select Model", ["llama3.2", "mistral", "phi3"])
     st.header("📤 Upload Documents")
     uploaded_files = st.file_uploader(
-        "Upload PDF, TXT, or DOCX files",
+        "Upload PDF, TXT, or DOCX",
         type=["pdf", "txt", "docx"],
-        accept_multiple_files=True,
-        help="Upload one or more documents to analyze"
+        accept_multiple_files=True
     )
-    
-    if uploaded_files:
-        st.success(f"✅ {len(uploaded_files)} file(s) uploaded")
-        for file in uploaded_files:
-            st.text(f"📄 {file.name}")
-    
-    st.divider()
-    
-    # Processing settings
-    with st.expander("🔧 Advanced Settings"):
-        chunk_size = st.slider("Chunk Size", 500, 2000, 1000, 100)
-        chunk_overlap = st.slider("Chunk Overlap", 0, 500, 200, 50)
-        temperature = st.slider("LLM Temperature", 0.0, 1.0, 0.7, 0.1)
-        num_sources = st.slider("Sources to Retrieve", 1, 5, 3, 1)
 
-# Initialize session state
 if 'vectorstore' not in st.session_state:
     st.session_state.vectorstore = None
 if 'rag_pipeline' not in st.session_state:
     st.session_state.rag_pipeline = None
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
-if 'processed_files' not in st.session_state:
-    st.session_state.processed_files = []
+if 'evaluation_tracker' not in st.session_state:
+    st.session_state.evaluation_tracker = RAGEvaluationTracker()
 
-# Main content area
-col1, col2 = st.columns([2, 1])
 
-with col1:
-    # Document processing
-    if uploaded_files and st.button("🔄 Process Documents", type="primary", use_container_width=True):
-        with st.spinner("Processing documents... This may take a minute ⏳"):
-            try:
-                # Save uploaded files temporarily
-                temp_dir = tempfile.mkdtemp()
-                file_paths = []
-                
-                for file in uploaded_files:
-                    file_path = os.path.join(temp_dir, file.name)
-                    with open(file_path, "wb") as f:
-                        f.write(file.getbuffer())
-                    file_paths.append(file_path)
-                
-                # Initialize ingestion with custom settings
-                ingestor = DocumentIngestion(
-                    chunk_size=chunk_size,
-                    chunk_overlap=chunk_overlap
-                )
-                
-                # Process documents
-                vectorstore, num_chunks = ingestor.process_documents(file_paths)
-                
-                # Save vector store
-                ingestor.save_vectorstore(vectorstore)
-                
-                # Create RAG pipeline
-                st.session_state.vectorstore = vectorstore
-                st.session_state.rag_pipeline = RAGPipeline(
-                    vectorstore, 
-                    model_name=model,
-                    temperature=temperature
-                )
-                st.session_state.processed_files = [f.name for f in uploaded_files]
-                
-                st.success(f"✅ Successfully processed {len(file_paths)} documents into {num_chunks} chunks!")
-                st.balloons()
-                
-            except Exception as e:
-                st.error(f"❌ Error processing documents: {str(e)}")
-                st.info("Make sure Ollama is running: `ollama serve`")
+if uploaded_files and st.button("🔄 Process Documents"):
+    with st.spinner("Processing..."):
+        try:
+            temp_dir = tempfile.mkdtemp()
+            file_paths = []
+            
+            for file in uploaded_files:
+                file_path = os.path.join(temp_dir, file.name)
+                with open(file_path, "wb") as f:
+                    f.write(file.getbuffer())
+                file_paths.append(file_path)
+            
+            ingestor = DocumentIngestion()
+            vectorstore, num_chunks = ingestor.process_documents(file_paths)
+            
+            st.session_state.vectorstore = vectorstore
+            st.session_state.rag_pipeline = RAGPipeline(vectorstore, model_name=model)
+            
+            st.success(f"✅ Processed {len(file_paths)} documents into {num_chunks} chunks!")
+        except Exception as e:
+            st.error(f"Error: {str(e)}")
 
-with col2:
-    # Statistics
-    if st.session_state.vectorstore:
-        st.metric("Documents Processed", len(st.session_state.processed_files))
-        st.metric("Model", model)
-        st.metric("Status", "✅ Ready")
-    else:
-        st.info("⬅️ Upload and process documents to get started")
 
-# Main Q&A section: This is where user asks questions after docs are processed
 if st.session_state.rag_pipeline:
-    st.divider()
-    st.header("💭 Ask Questions")
+    tabs = st.tabs(["💬 Ask Questions", "📊 Evaluation", "📜 History"])
     
-    # Chat interface
-    question = st.text_input(
-        "Enter your question:",
-        placeholder="e.g., What is the main topic of the documents?",
-        key="question_input"
-    )
-    
-    col1, col2, col3 = st.columns([1, 1, 4])
-    with col1:
-        ask_button = st.button("💡 Ask", type="primary")
-    with col2:
-        clear_button = st.button("🗑️ Clear History")
-    
-    if clear_button:
-        st.session_state.chat_history = []
-        st.rerun()
-    
-    if ask_button and question:
-        with st.spinner("🧐 Thinking..."):
-            try:
-                # Update model if changed
-                if st.session_state.rag_pipeline.model_name != model:
-                    st.session_state.rag_pipeline.update_model(model)
-                
-                # Query the RAG pipeline
-                result = st.session_state.rag_pipeline.query(question)
-                
-                # Add to chat history
-                st.session_state.chat_history.append({
-                    "question": question,
-                    "answer": result["answer"],
-                    "sources": result["sources"],
-                    "response_time": result["response_time"]
-                })
-                
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
-                st.info("Make sure Ollama is running: `ollama serve`")
-    
-    # Display chat history 
-    if st.session_state.chat_history:
-        st.divider()
-        st.subheader("📖 Conversation History")
+
+    with tabs[0]:
+        st.header("💬 Ask Questions")
         
-        for i, chat in enumerate(reversed(st.session_state.chat_history)):
-            with st.expander(f"Q: {chat['question'][:100]}...", expanded=(i==0)):
-                st.markdown(f"**Question:** {chat['question']}")
-                st.markdown(f"**Answer:** {chat['answer']}")
-                st.caption(f"⏳ Response time: {chat['response_time']:.2f}s")
-                
-                # Show sources
-                if chat['sources']:
-                    st.markdown("**📄 Sources:**")
-                    for j, doc in enumerate(chat['sources'][:3], 1):
-                        with st.container():
-                            st.markdown(f"<div class='source-box'>", unsafe_allow_html=True)
-                            st.markdown(f"**Source {j}:**")
-                            st.text(doc.page_content[:300] + "...")
-                            if hasattr(doc, 'metadata') and 'source' in doc.metadata:
-                                st.caption(f"📎 From: {os.path.basename(doc.metadata['source'])}")
-                            st.markdown("</div>", unsafe_allow_html=True)
+        question = st.text_input(
+            "Enter your question:",
+            placeholder="e.g., What is the main topic?",
+            key="question_input"
+        )
+        
+        ask_button = st.button("🚀 Ask", type="primary")
+        
+        if ask_button and question:
+            with st.spinner("🤔 Thinking..."):
+                try:
+                    # Query RAG
+                    result = st.session_state.rag_pipeline.query(question)
+                    
+                    # Extract contexts
+                    contexts = [doc.page_content for doc in result["sources"]]
+                    
+                    # Add to eval tracker
+                    st.session_state.evaluation_tracker.add_evaluation(
+                        question=question,
+                        answer=result["answer"],
+                        contexts=contexts,
+                        response_time=result["response_time"]
+                    )
+                    
+                    # Add to chat hist
+                    st.session_state.chat_history.append({
+                        "question": question,
+                        "answer": result["answer"],
+                        "sources": result["sources"],
+                        "response_time": result["response_time"]
+                    })
+                    
+                    st.success("✅ Answer generated!")
+                    
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+        
+        if st.session_state.chat_history:
+            st.divider()
+            st.subheader("Recent Answers")
+            
+            for i, chat in enumerate(reversed(st.session_state.chat_history[-5:]), 1):
+                with st.expander(f"Q: {chat['question'][:60]}...", expanded=(i==1)):
+                    st.markdown(f"**Answer:** {chat['answer']}")
+                    st.caption(f"⏱️ {chat['response_time']:.2f}s")
+                    
+                with st.expander("📄 Sources"):
+                    for j, source in enumerate(chat['sources'][:3], 1):
+                        st.text(f"Source {j}: {source.page_content[:200]}...")
+    
+
+    with tabs[1]:
+        st.header("📊 RAG System Evaluation")
+        
+        tracker = st.session_state.evaluation_tracker
+        
+        if len(tracker.history) == 0:
+            st.info("👆 Ask questions in the first tab to see evaluation metrics!")
+        else:
+            # Summary stats
+            summary = tracker.get_summary_stats()
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Overall Score", f"{summary['avg_overall_score']:.1%}")
+            with col2:
+                st.metric("Completeness", f"{summary['avg_completeness_score']:.1%}")
+            with col3:
+                st.metric("Citation Rate", f"{summary['avg_citation_score']:.1%}")
+            with col4:
+                st.metric("Avg Response", f"{summary['avg_response_time']:.2f}s")
+            
+            st.divider()
+            
+            # Met details
+            st.subheader("📋 Query History")
+            
+            df = tracker.to_dataframe()
+            
+            display_df = df[[
+                'timestamp',
+                'question',
+                'overall_score',
+                'completeness_score',
+                'citation_score',
+                'response_time'
+            ]].copy()
+            
+            display_df['timestamp'] = display_df['timestamp'].dt.strftime('%H:%M:%S')
+            display_df['overall_score'] = display_df['overall_score'].apply(lambda x: f"{x:.1%}")
+            display_df['completeness_score'] = display_df['completeness_score'].apply(lambda x: f"{x:.1%}")
+            display_df['citation_score'] = display_df['citation_score'].apply(lambda x: f"{x:.1%}")
+            display_df['response_time'] = display_df['response_time'].apply(lambda x: f"{x:.2f}s")
+            
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+            
+            st.divider()
+            
+            csv = df.to_csv(index=False)
+            st.download_button(
+                "📥 Download Evaluation Report",
+                csv,
+                f"evaluation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                "text/csv"
+            )
+    
+
+    with tabs[2]:
+        st.header("📜 Full Conversation History")
+        
+        if st.session_state.chat_history:
+            for i, chat in enumerate(st.session_state.chat_history, 1):
+                st.markdown(f"### Question {i}")
+                st.markdown(f"**Q:** {chat['question']}")
+                st.markdown(f"**A:** {chat['answer']}")
+                st.caption(f"Response time: {chat['response_time']:.2f}s")
+                st.divider()
+        else:
+            st.info("No conversation history yet")
 
 else:
-    # Welcome message
-    st.info("""
-    ### 👋🤗 Welcome to RAG Document QA!
-    
-    **How to use:**
-    1. Upload documents (PDF, TXT, DOCX) in the sidebar
-    2. Click "Process Documents"
-    3. Ask questions about your documents
-    
-    **Example questions:**
-    - "What is the main topic of these documents?"
-    - "Summarize the key findings"
-    - "What are the main recommendations?"
-    
-    **Note:** Make sure Ollama is running (`ollama serve`)
-    """)
+    # No docs processed
+    st.info("👈 Upload documents in the sidebar to get started!")
 
-# Footer
 st.divider()
-st.caption("🚀 Built with LangChain, Ollama, FAISS & Streamlit | 100% Local & Free")
+st.caption("🚀 RAG Document QA with Evaluation | Powered by LangChain + Ollama")
